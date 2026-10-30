@@ -13,6 +13,12 @@ Live app: https://fox294.github.io/disneyland-macro-tracker/
 2. Tap **Install app** at the top of the page, or Chrome's three-dot menu, then **Install app** (older versions say **Add to Home screen**).
 3. Open it once while online so it caches itself for offline use.
 
+## Tabs
+- **Menu**: every item, filterable by food and restaurant. Tick what you ate.
+- **Day log**: the selected day's items, quantities and the MacroFactor Quick Add list.
+- **Recent**: items you've logged before, newest first, one row per item (hand-added items included). Tick to add one to the selected day at quantity 1.
+- **History**: one row per logged day with its totals. Tap a day to open it. Backup and restore live here.
+
 ## Moving entries into MacroFactor
 MacroFactor has no import for food entries, so the Day log tab has an **Enter in MacroFactor** list. In MacroFactor tap + then **Quick Add**; in this app tap each value (calories, protein, fat, carbs) to copy it, paste it into the matching Quick Add field, then tick **Entered**. Changing an item's quantity clears its tick.
 
