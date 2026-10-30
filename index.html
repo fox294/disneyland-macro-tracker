@@ -145,6 +145,24 @@ textarea.copybox{width:100%;min-height:120px;font:13px/1.4 ui-monospace,Menlo,Co
 .hrow .s{grid-column:1/-1;font-size:13.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .hrow .s b{color:var(--ink)}
 .backup{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.mfh{margin-top:18px}
+.mfhelp{font-size:13px;color:var(--muted);margin:0 0 8px;max-width:60ch}
+.mfhead{padding:8px 12px;font-size:13px;color:var(--muted);background:var(--bg);border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.mfrow{padding:10px 12px;border-bottom:1px solid var(--line);display:grid;gap:8px}
+.mfrow:last-child{border-bottom:0}
+.mfrow.done{opacity:.6}
+.mfn{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.mfname{background:none;border:0;padding:0;text-align:left;font-weight:600;line-height:1.3;cursor:pointer;min-width:0}
+.mfname:hover{text-decoration:underline}
+.mfck{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);white-space:nowrap;cursor:pointer}
+.mfck input{width:20px;height:20px;accent-color:var(--accent);margin:0}
+.mfvals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.mfv{display:grid;gap:1px;justify-items:start;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 9px;cursor:pointer;text-align:left;min-width:0}
+.mfv span{font-family:var(--display);font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.mfv b{font-size:18px;font-variant-numeric:tabular-nums;user-select:all}
+.mfv:hover,.mfname.copied{border-color:var(--accent)}
+.mfv.copied{background:var(--lean-bg);border-color:var(--lean)}
+.mfv.copied span::after{content:" · copied";color:var(--lean)}
 footer{margin-top:28px;font-size:13px;color:var(--muted);max-width:76ch;display:grid;gap:6px}
 footer p{margin:0}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
@@ -234,6 +252,10 @@ footer p{margin:0}
           </form>
           <div id="copyWrap" hidden style="padding:0 12px 12px"><textarea class="copybox" id="copyBox" aria-label="Day log text" readonly></textarea></div>
         </div>
+        <h2 id="h-mf" class="mfh">Enter in MacroFactor</h2>
+        <p class="mfhelp">In MacroFactor, tap + then Quick Add. Tap a value here to copy it, paste it into the matching field, then tick Entered. Quick Add asks for calories, protein, fat and carbs in this order; the name is optional.</p>
+        <div class="card" id="mfRows"></div>
+        <p class="msg" id="mfMsg" aria-live="polite"></p>
       </section>
       <section class="panel" id="p-history" aria-labelledby="h-hist">
         <h2 id="h-hist">History</h2>
@@ -245,7 +267,7 @@ footer p{margin:0}
 
   <footer>
     <p><b>Estimates</b> [likely, ±25%]: built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted. Starbucks egg bites use Starbucks' published panels; the Mickey bar and Toll House sandwich use grocery-pack labels and may run small. Tap an item's name to see what was assumed.</p>
-    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus as of October 2026; app version 2026-10-30.</p>
+    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus as of October 2026; app version 2026-10-30.2.</p>
     <p id="installHint">To install on Android: open this page in Chrome, tap the ⋮ menu, then Install app (or Add to Home screen). It works offline after the first visit.</p>
   </footer>
 </div>
@@ -379,7 +401,7 @@ function removeEntry(entryId) {
   touch(state.date); renderAll();
 }
 function setQty(entryId, q) {
-  days[state.date] = dayEntries().map(e => e.id === entryId ? { ...e, q } : e);
+  days[state.date] = dayEntries().map(e => e.id === entryId ? { ...e, q, mf: false } : e);
   touch(state.date); renderAll();
 }
 
@@ -472,7 +494,32 @@ function renderTabs() {
   document.body.dataset.tab = state.tab;
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === state.tab)));
 }
-function renderAll() { renderDay(); renderMenu(); renderLog(); renderHistory(); renderTabs(); setStatus(); }
+function renderMF() {
+  const list = dayEntries(), el = document.getElementById('mfRows');
+  if (!list.length) { el.innerHTML = '<div class="empty">Logged items appear here with their Quick Add values.</div>'; return; }
+  const done = list.filter(e => e.mf).length;
+  const btn = (lab, val) => `<button type="button" class="mfv" data-copy="${esc(val)}" aria-label="Copy ${lab} ${esc(val)}"><span>${lab}</span><b>${esc(val)}</b></button>`;
+  el.innerHTML = `<div class="mfhead">${done} of ${list.length} entered in MacroFactor</div>` + list.map(e => {
+    const q = +e.q || 0, name = e.name + (q !== 1 ? ' x' + fq(q) : '');
+    return `<div class="mfrow${e.mf ? ' done' : ''}"><div class="mfn"><button type="button" class="mfname" data-copy="${esc(name)}" aria-label="Copy name">${esc(name)}</button>
+      <label class="mfck"><input type="checkbox" class="mfdone" data-entry="${esc(e.id)}" ${e.mf ? 'checked' : ''}> Entered</label></div>
+      <div class="mfvals">${btn('Calories', Math.round(e.k * q))}${btn('Protein', Math.round(e.p * q))}${btn('Fat', Math.round(e.f * q))}${btn('Carbs', Math.round(e.c * q))}</div></div>`;
+  }).join('');
+}
+function renderAll() { renderDay(); renderMenu(); renderLog(); renderMF(); renderHistory(); renderTabs(); setStatus(); }
+function selectText(el) { try { const r = document.createRange(); r.selectNodeContents(el.querySelector('b') || el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); } catch (e) {} }
+document.getElementById('mfRows').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-copy]'); if (!b) return;
+  const val = b.dataset.copy, m = document.getElementById('mfMsg');
+  const ok = () => { document.querySelectorAll('.copied').forEach(x => x.classList.remove('copied')); b.classList.add('copied'); m.textContent = 'Copied ' + val; m.className = 'msg'; };
+  const fail = () => { selectText(b); m.textContent = 'Copy is blocked here; the value is selected, so use your phone\'s Copy.'; m.className = 'msg'; };
+  try { navigator.clipboard.writeText(val).then(ok, fail); } catch (e) { fail(); }
+});
+document.getElementById('mfRows').addEventListener('change', ev => {
+  const t = ev.target; if (!t.matches('input.mfdone')) return;
+  days[state.date] = dayEntries().map(e => e.id === t.dataset.entry ? { ...e, mf: t.checked } : e);
+  touch(state.date); renderAll();
+});
 
 let msgTimer;
 function showMsg(text, err) {
@@ -546,7 +593,7 @@ async function initLocal() {
   mode = 'local';
   try { if (navigator.storage && navigator.storage.persist) persisted = (await navigator.storage.persisted()) || (await navigator.storage.persist()); } catch (e) {}
   setStatus();
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) { try { await navigator.serviceWorker.register('sw.js'); } catch (e) {} }
+  if ('serviceWorker' in navigator && location.protocol === 'https:') { try { await navigator.serviceWorker.register('sw.js'); } catch (e) {} }
 }
 // install prompt (Chrome on Android and desktop)
 let deferredInstall = null;
@@ -575,7 +622,7 @@ document.getElementById('restoreFile').addEventListener('change', async ev => {
     for (const [d, list] of Object.entries(data.days)) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !Array.isArray(list)) continue;
       const cur = days[d] ? days[d].slice() : []; const ids = new Set(cur.map(e => e.id));
-      for (const e of list) { if (e && e.id && !ids.has(e.id) && typeof e.name === 'string') { cur.push({ id: e.id, itemId: e.itemId || null, name: e.name, loc: e.loc || '', q: +e.q || 1, k: +e.k || 0, p: +e.p || 0, f: +e.f || 0, c: +e.c || 0 }); ids.add(e.id); added++; } }
+      for (const e of list) { if (e && e.id && !ids.has(e.id) && typeof e.name === 'string') { cur.push({ id: e.id, itemId: e.itemId || null, name: e.name, loc: e.loc || '', q: +e.q || 1, k: +e.k || 0, p: +e.p || 0, f: +e.f || 0, c: +e.c || 0, mf: !!e.mf }); ids.add(e.id); added++; } }
       if (cur.length) days[d] = cur;
     }
     saveCache(); renderAll(); backupMsg('Restored ' + added + ' item' + (added === 1 ? '' : 's') + ' from the backup.');

@@ -13,6 +13,9 @@ Live app: https://fox294.github.io/disneyland-macro-tracker/
 2. Tap **Install app** at the top of the page, or Chrome's three-dot menu, then **Install app** (older versions say **Add to Home screen**).
 3. Open it once while online so it caches itself for offline use.
 
+## Moving entries into MacroFactor
+MacroFactor has no import for food entries, so the Day log tab has an **Enter in MacroFactor** list. In MacroFactor tap + then **Quick Add**; in this app tap each value (calories, protein, fat, carbs) to copy it, paste it into the matching Quick Add field, then tick **Entered**. Changing an item's quantity clears its tick.
+
 ## Where your data lives
 | Data | Where it is | In this repo? |
 |---|---|---|
