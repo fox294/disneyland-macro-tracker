@@ -14,7 +14,7 @@ Live app: https://fox294.github.io/disneyland-macro-tracker/
 3. Open it once while online so it caches itself for offline use.
 
 ## Tabs
-- **Menu**: every item, filterable by food and restaurant. Tick what you ate.
+- **Menu**: every item, filterable by food, restaurant, park and area (land, such as Galaxy's Edge or Cars Land, using Disney's own land names). Sort by kcal per gram of protein, protein, calories, area, restaurant or name. Tick what you ate.
 - **Day log**: the selected day's items, quantities and the MacroFactor Quick Add list.
 - **Recent**: items you've logged before, newest first, one row per item (hand-added items included). Tick to add one to the selected day at quantity 1.
 - **History**: one row per logged day with its totals. Tap a day to open it. Backup and restore live here.

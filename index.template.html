@@ -68,7 +68,7 @@ aside{display:grid;gap:20px;min-width:0}
 h2{font-family:var(--display);font-size:20px;font-weight:700;margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 /* filters */
-.filters{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-bottom:10px}
+.filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
 .filters .full{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 label.fl{display:grid;gap:3px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-family:var(--display)}
 input[type=search],input[type=text],input[type=number],select{font-size:15px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:0;width:100%;text-transform:none;letter-spacing:0;font-family:var(--body);font-weight:400;color:var(--ink)}
@@ -77,7 +77,9 @@ input[type=search],input[type=text],input[type=number],select{font-size:15px;bac
 .seg button+button{border-left:1px solid var(--line)}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);font-weight:600}
 .filters select{width:auto}
+.filters .fl select{width:100%}
 .count{font-size:13px;color:var(--muted);margin:0 0 8px}
+@media (max-width:760px){.filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.filters .fl.area{grid-column:1/-1}}
 @media (max-width:520px){.filters{grid-template-columns:1fr}}
 /* menu rows */
 .mrow{border-bottom:1px solid var(--line)}
@@ -217,8 +219,9 @@ footer p{margin:0}
     <section class="panel" id="p-menu" aria-labelledby="h-menu">
       <h2 id="h-menu">Check what you ate</h2>
       <div class="filters">
-        <label class="fl" for="qFood">Food<input type="search" id="qFood" placeholder="Filter by food, e.g. tenders" autocomplete="off"></label>
-        <label class="fl" for="qLoc">Restaurant<input type="search" id="qLoc" placeholder="Filter by restaurant, e.g. Pym" list="locList" autocomplete="off"></label>
+        <label class="fl" for="qFood">Food<input type="search" id="qFood" placeholder="e.g. tenders" autocomplete="off"></label>
+        <label class="fl" for="qLoc">Restaurant<input type="search" id="qLoc" placeholder="e.g. Pym" list="locList" autocomplete="off"></label>
+        <label class="fl area" for="landSel">Area<select id="landSel"></select></label>
         <datalist id="locList"></datalist>
         <div class="full">
           <div class="seg" role="group" aria-label="Park">
@@ -230,6 +233,7 @@ footer p{margin:0}
             <option value="ratio">Sort: kcal per g protein</option>
             <option value="p">Sort: most protein</option>
             <option value="k">Sort: fewest calories</option>
+            <option value="land">Sort: area</option>
             <option value="loc">Sort: restaurant</option>
             <option value="name">Sort: name</option>
           </select>
@@ -283,7 +287,7 @@ footer p{margin:0}
 
   <footer>
     <p><b>Estimates</b> [likely, ±25%]: built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted. Starbucks egg bites use Starbucks' published panels; the Mickey bar and Toll House sandwich use grocery-pack labels and may run small. Tap an item's name to see what was assumed.</p>
-    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus as of October 31, 2026; app version 2026-10-31.3.</p>
+    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus as of October 31, 2026; app version 2026-10-31.4.</p>
     <p id="installHint">To install on Android: open this page in Chrome, tap the ⋮ menu, then Install app (or Add to Home screen). It works offline after the first visit.</p>
   </footer>
 </div>
@@ -302,7 +306,8 @@ const band = r => r == null ? 'na' : r <= 12 ? 'lean' : r <= 18 ? 'solid' : r <=
 const rid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-const state = { date: todayStr(), park: 'all', qFood: '', qLoc: '', sort: 'ratio', tab: 'menu', open: new Set() };
+const state = { date: todayStr(), park: 'all', land: 'all', qFood: '', qLoc: '', sort: 'ratio', tab: 'menu', open: new Set() };
+const ANY_AREA = 'Carts & sides (anywhere)';
 let days = {};            // date -> entries [{id,itemId,name,loc,q,k,p,f,c}]
 let mode = 'connecting';  // connecting | cloud | local
 let col = null;
@@ -312,10 +317,10 @@ const dirty = new Set(), timers = {}, inflight = {}, again = {}, retries = {};
 try {
   const c = JSON.parse(localStorage.getItem(LS) || 'null');
   if (c && c.days) { days = c.days; cacheOrigin = c.origin || 'local'; }
-  const p = c && c.prefs; if (p) { state.park = p.park || 'all'; state.sort = p.sort || 'ratio'; }
+  const p = c && c.prefs; if (p) { state.park = p.park || 'all'; state.land = p.land || 'all'; state.sort = p.sort || 'ratio'; }
 } catch (e) {}
 function saveCache() {
-  try { localStorage.setItem(LS, JSON.stringify({ origin: mode === 'cloud' ? 'cloud' : 'local', days, prefs: { park: state.park, sort: state.sort } })); } catch (e) {}
+  try { localStorage.setItem(LS, JSON.stringify({ origin: mode === 'cloud' ? 'cloud' : 'local', days, prefs: { park: state.park, land: state.land, sort: state.sort } })); } catch (e) {}
 }
 
 // ---------- persistence ----------
@@ -440,9 +445,27 @@ function renderDay() {
   document.getElementById('tR').innerHTML = r == null ? '–' : `<span class="chip ${band(r)}" style="font-size:20px;padding:2px 10px">${r.toFixed(1)}</span>`;
   document.getElementById('tab-log').textContent = 'Day log (' + t.n + ')';
 }
-function where(d) { return d.park === 'Either park' ? d.loc : (d.park === 'Disneyland' ? 'Disneyland' : 'California Adventure') + ' · ' + d.loc; }
+function where(d) {
+  if (d.land && d.land !== ANY_AREA) return d.land + ' · ' + d.loc;
+  return d.park === 'Either park' ? d.loc : (d.park === 'Disneyland' ? 'Disneyland' : 'California Adventure') + ' · ' + d.loc;
+}
+// Area (land) picker: lists the areas of the park(s) currently shown.
+function landOptions() {
+  const sel = document.getElementById('landSel');
+  let html = '<option value="all">All areas</option>';
+  for (const [pk, label] of [['Disneyland', 'Disneyland Park'], ['California Adventure', 'California Adventure']]) {
+    if (state.park !== 'all' && state.park !== pk) continue;
+    const lands = [...new Set(ITEMS.filter(d => d.park === pk && d.land && d.land !== ANY_AREA).map(d => d.land))].sort((a, b) => a.replace(/^Star Wars: /, '').localeCompare(b.replace(/^Star Wars: /, '')));
+    html += `<optgroup label="${esc(label)}">` + lands.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('') + '</optgroup>';
+  }
+  html += `<option value="${esc(ANY_AREA)}">${esc(ANY_AREA)}</option>`;
+  sel.innerHTML = html;
+  if (![...sel.options].some(o => o.value === state.land)) state.land = 'all';
+  sel.value = state.land;
+}
 function matches(d) {
   if (state.park !== 'all' && d.park !== state.park && d.park !== 'Either park' && !/both parks/i.test(d.loc)) return false;
+  if (state.land !== 'all' && d.land !== state.land) return false;
   const qf = state.qFood.toLowerCase(), ql = state.qLoc.toLowerCase();
   if (qf && !d.item.toLowerCase().includes(qf)) return false;
   if (ql && !(d.loc + ' ' + where(d)).toLowerCase().includes(ql)) return false;
@@ -453,6 +476,7 @@ function sorted(list) {
   return list.slice().sort((a, b) => {
     if (s === 'p') return b.p - a.p || a.k - b.k;
     if (s === 'k') return a.k - b.k;
+    if (s === 'land') return (a.land || '').localeCompare(b.land || '') || a.loc.localeCompare(b.loc) || a.item.localeCompare(b.item);
     if (s === 'loc') return a.loc.localeCompare(b.loc) || a.item.localeCompare(b.item);
     if (s === 'name') return a.item.localeCompare(b.item);
     const ar = a.ratio == null ? 999 : a.ratio, br = b.ratio == null ? 999 : b.ratio;
@@ -478,10 +502,11 @@ function menuRow(d) {
 }
 function renderMenu() {
   const list = sorted(ITEMS.filter(matches));
-  document.getElementById('menuRows').innerHTML = list.length ? list.map(menuRow).join('') : '<div class="empty">No items match. Clear a filter or switch parks.</div>';
+  document.getElementById('menuRows').innerHTML = list.length ? list.map(menuRow).join('') : '<div class="empty">No items match. Clear a filter, or pick another park or area.</div>';
   document.getElementById('count').textContent = list.length + ' of ' + ITEMS.length + ' items';
   document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.park === state.park)));
   document.getElementById('sortSel').value = state.sort;
+  document.getElementById('landSel').value = state.land;
 }
 function renderLog() {
   const list = dayEntries();
@@ -613,13 +638,14 @@ document.getElementById('recentRows').addEventListener('change', ev => {
 document.getElementById('histRows').addEventListener('click', ev => {
   const b = ev.target.closest('[data-day]'); if (!b) return; state.date = b.dataset.day; state.tab = 'log'; renderAll();
 });
-document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { state.park = b.dataset.park; saveCache(); renderMenu(); }));
+document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { state.park = b.dataset.park; landOptions(); saveCache(); renderMenu(); }));
+document.getElementById('landSel').addEventListener('change', e => { state.land = e.target.value; saveCache(); renderMenu(); });
 document.getElementById('qFood').addEventListener('input', e => { state.qFood = e.target.value.trim(); renderMenu(); });
 document.getElementById('qLoc').addEventListener('input', e => { state.qLoc = e.target.value.trim(); renderMenu(); });
 document.getElementById('sortSel').addEventListener('change', e => { state.sort = e.target.value; saveCache(); renderMenu(); });
 document.getElementById('clearFilters').addEventListener('click', () => {
-  state.qFood = ''; state.qLoc = ''; state.park = 'all';
-  document.getElementById('qFood').value = ''; document.getElementById('qLoc').value = ''; saveCache(); renderMenu();
+  state.qFood = ''; state.qLoc = ''; state.park = 'all'; state.land = 'all';
+  document.getElementById('qFood').value = ''; document.getElementById('qLoc').value = ''; landOptions(); saveCache(); renderMenu();
 });
 document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { state.tab = b.dataset.tab; renderTabs(); window.scrollTo({ top: 0 }); }));
 function shiftDay(n) { const [y, m, d] = state.date.split('-').map(Number); const dt = new Date(y, m - 1, d + n); state.date = dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()); renderAll(); }
@@ -654,6 +680,7 @@ document.getElementById('copyLog').addEventListener('click', () => {
   } catch (e) { fallback(); }
 });
 
+landOptions();
 document.getElementById('locList').innerHTML = [...new Set(ITEMS.map(d => d.loc))].sort().map(l => `<option value="${esc(l)}"></option>`).join('');
 let persisted = false;
 async function initLocal() {
