@@ -32,7 +32,7 @@ MacroFactor has no import for food entries, so the Day log tab has an **Enter in
 The log belongs to this exact web address. If the app moves to a different address, back up first and use **Restore from backup** there. Clearing Chrome's site data for this address deletes the log.
 
 ## About the numbers
-Disney does not publish nutrition data for park food. All but four items are estimates built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted; treat them as plus or minus 25 percent. The Starbucks egg bites use Starbucks' published panels; the Mickey bar and Toll House cookie sandwich use grocery-pack labels. Menus as of October 2026.
+Disney does not publish nutrition data for park food. All but four items are estimates built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted; treat them as plus or minus 25 percent. The Starbucks egg bites use Starbucks' published panels; the Mickey bar and Toll House cookie sandwich use grocery-pack labels. Menus match Disney's official online menus for both parks as read on October 31, 2026 (quick-service restaurants, snack spots and Galaxy's Edge; table-service restaurants, alcohol, kids' meals and Starbucks drinks are not included). When Disney drops a dish it leaves the menu here too; anything you already logged keeps its numbers and stays in Recent.
 
 ## Files
 - `index.html`: the app, with the menu data built in
