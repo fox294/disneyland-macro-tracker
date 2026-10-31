@@ -1,6 +1,6 @@
 # Disneyland Macro Tracker
 
-A phone web app for logging what you eat at Disneyland Resort (Disneyland Park and Disney California Adventure). Check off menu items for each day, set quantities, and see the day's calories, protein, fat, carbs and calories per gram of protein. Filter the menu by food and by restaurant.
+A phone web app for logging what you eat at Disneyland Resort (Disneyland Park, Disney California Adventure and Disney's Grand Californian Hotel & Spa). Check off menu items for each day, set quantities, and see the day's calories, protein, fat, carbs and calories per gram of protein. Filter the menu by food and by restaurant.
 
 Live app: https://fox294.github.io/disneyland-macro-tracker/
 
@@ -32,7 +32,7 @@ MacroFactor has no import for food entries, so the Day log tab has an **Enter in
 The log belongs to this exact web address. If the app moves to a different address, back up first and use **Restore from backup** there. Clearing Chrome's site data for this address deletes the log.
 
 ## About the numbers
-Disney does not publish nutrition data for park food. All but four items are estimates built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted; treat them as plus or minus 25 percent. The Starbucks egg bites use Starbucks' published panels; the Mickey bar and Toll House cookie sandwich use grocery-pack labels. Menus match Disney's official online menus for both parks as read on October 31, 2026 (quick-service restaurants, snack spots and Galaxy's Edge; table-service restaurants other than the Cafe Orleans Monte Cristo, alcohol, kids' meals and Starbucks drinks are not included). When Disney drops a dish it leaves the menu here too; anything you already logged keeps its numbers and stays in Recent.
+Disney does not publish nutrition data for park or hotel food. All but four items are estimates built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted; treat them as plus or minus 25 percent. The Starbucks egg bites use Starbucks' published panels; the Mickey bar and Toll House cookie sandwich use grocery-pack labels. Menus match Disney's official online menus as read on October 31, 2026 (park quick-service restaurants, snack spots and Galaxy's Edge, plus every Grand Californian venue: GCH Craftsman Grill and Bar, Hearthstone Lounge, Napa Rose, In-Room Dining and Storytellers Cafe buffet servings; park table-service restaurants other than the Cafe Orleans Monte Cristo, alcohol, kids' meals and Starbucks drinks are not included). When Disney drops a dish it leaves the menu here too; anything you already logged keeps its numbers and stays in Recent.
 
 ## Files
 - `index.html`: the app, with the menu data built in
