@@ -1,5 +1,5 @@
 // Disneyland Macro Tracker service worker: works offline after the first visit.
-const VERSION = '2026-10-30-3';
+const VERSION = '2026-10-31-1';
 const SHELL = 'dlmt-shell-' + VERSION;
 const FONTS = 'dlmt-fonts';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
