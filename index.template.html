@@ -121,6 +121,10 @@ input[type=search],input[type=text],input[type=number],select{font-size:15px;bac
 .crow .cg{grid-column:1/-1;padding-left:28px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .crow.off .cl span{text-decoration:line-through;color:var(--muted)}
 .crow.chg .cl span{font-weight:600}
+.crow.grp .cl span{font-weight:600}
+.crow.sub{padding-left:28px;font-size:13px;border-bottom-style:dotted}
+.crow.sub .cl input{width:18px;height:18px}
+.crow.sub select{font-size:13px}
 .cbar{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;font-size:13px}
 .lnk{background:none;border:0;padding:4px 0;color:var(--accent);cursor:pointer;font-weight:600;font-size:13px}
 .lnk:hover{text-decoration:underline}
@@ -307,7 +311,7 @@ footer p{margin:0}
 
   <footer>
     <p><b>Estimates</b> [likely, ±25%]: built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted. Starbucks egg bites use Starbucks' published panels; the Mickey bar and Toll House sandwich use grocery-pack labels and may run small. Tap an item's name to see what was assumed.</p>
-    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus for both parks and the Grand Californian Hotel as of October 31, 2026; app version 2026-11-01.1.</p>
+    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus for both parks and the Grand Californian Hotel as of October 31, 2026; app version 2026-11-01.2.</p>
     <p id="installHint">To install on Android: open this page in Chrome, tap the ⋮ menu, then Install app (or Add to Home screen). It works offline after the first visit.</p>
   </footer>
 </div>
@@ -456,8 +460,15 @@ const shortLab = s => String(s).replace(/\s*\([^)]*\)/g, '').split(' / ')[0].tri
 function adjMult(e, i, lab) { const a = (e.adj || []).find(x => x.i === i && x.n === lab); return a ? a.m : 1; }
 function adjText(e) {
   const a = e.adj || []; if (!a.length) return '';
-  const no = a.filter(x => x.m === 0).map(x => shortLab(x.n));
-  return [no.length ? 'no ' + no.join(', ') : ''].concat(a.filter(x => x.m !== 0).map(x => shortLab(x.n) + ' x' + fq(x.m))).filter(Boolean).join('; ');
+  // a side changed as a whole reads as the side ("no parmesan cottage fries"), not its pieces
+  const d = e.itemId && BY_ID[e.itemId], parts = [], used = new Set();
+  for (const [lab, g] of (d && d.grp) || []) {
+    const ms = g.map(i => adjMult(e, i, d.comps[i][0]));
+    if (ms[0] !== 1 && ms.every(m => m === ms[0])) { parts.push({ n: lab || d.comps[g[0]][0], m: ms[0] }); g.forEach(i => used.add(i)); }
+  }
+  for (const x of a) if (!used.has(x.i)) parts.push({ n: x.n, m: x.m });
+  const no = parts.filter(x => x.m === 0).map(x => shortLab(x.n));
+  return [no.length ? 'no ' + no.join(', ') : ''].concat(parts.filter(x => x.m !== 0).map(x => shortLab(x.n) + ' x' + fq(x.m))).filter(Boolean).join('; ');
 }
 const entryName = e => { const t = adjText(e); return t ? e.name + ' [' + t + ']' : e.name; };
 function withAdj(e, adj) {
@@ -468,42 +479,62 @@ function withAdj(e, adj) {
   for (const a of adj) { const d = a.m - 1; k += d * a.k; p += d * a.p; f += d * a.f; c += d * a.c; }
   return Object.assign(out, { adj, base, k: Math.max(0, r10(k)), p: Math.max(0, Math.round(p)), f: Math.max(0, Math.round(f)), c: Math.max(0, Math.round(c)) });
 }
-function setComp(entryId, i, m) {
+// idxs: one component, or every component of a side
+function setComp(entryId, idxs, m) {
   days[state.date] = dayEntries().map(e => {
     if (e.id !== entryId) return e;
-    const d = BY_ID[e.itemId], part = canAdjust(d) && d.comps[i]; if (!part) return e;
-    const adj = (e.adj || []).filter(x => !(x.i === i && x.n === part[0]));
-    if (m !== 1) adj.push({ i, n: part[0], g: part[1], m, k: part[2], p: part[3], f: part[4], c: part[5] });
+    const d = BY_ID[e.itemId]; if (!canAdjust(d) || !idxs.every(i => d.comps[i])) return e;
+    let adj = e.adj || [];
+    for (const i of idxs) {
+      const part = d.comps[i];
+      adj = adj.filter(x => !(x.i === i && x.n === part[0]));
+      if (m !== 1) adj.push({ i, n: part[0], g: part[1], m, k: part[2], p: part[3], f: part[4], c: part[5] });
+    }
     return withAdj(e, adj.sort((a, b) => a.i - b.i));
   });
   touch(state.date); renderAll();
 }
+const idxList = el => String(el.dataset.idx).split(',').map(Number);
+function compRow(e, d, idxs, label, cls) {
+  const id = esc(e.id), ms = idxs.map(i => adjMult(e, i, d.comps[i][0]));
+  const on = ms.some(m => m > 0), same = ms.every(m => m === ms[0]), m = same ? ms[0] : null, sm = on && same ? m : 1;
+  const opts = m == null || !on || CMULTS.includes(sm) ? CMULTS : CMULTS.concat([sm]).sort((a, b) => a - b);
+  const mixed = on && !same ? '<option value="" selected disabled>mixed</option>' : '';
+  const sel = `<select class="cmq" data-entry="${id}" data-idx="${idxs.join(',')}" aria-label="Amount of ${esc(label)}"${on ? '' : ' disabled'}>${mixed}${opts.map(q => `<option value="${q}"${!mixed && q === sm ? ' selected' : ''}>×${fq(q)}</option>`).join('')}<option value="custom">Custom…</option></select>`;
+  const t = [0, 0, 0, 0, 0];  // g, kcal, P, F, C as counted (or, when off, what was removed)
+  idxs.forEach((i, n) => { const c = d.comps[i], w = on ? ms[n] : 1; for (let j = 0; j < 5; j++) t[j] += c[j + 1] * w; });
+  return `<div class="crow ${cls}${on ? '' : ' off'}${on && m !== 1 ? ' chg' : ''}"><label class="cl"><input type="checkbox" class="cck" data-entry="${id}" data-idx="${idxs.join(',')}"${on ? ' checked' : ''}><span>${esc(label)}</span></label>${sel}<span class="cg">${fmt(t[0])} g · ${fmt(t[1])} kcal · P ${fmt(t[2])} · F ${fmt(t[3])} · C ${fmt(t[4])}${on ? '' : ' · not counted'}</span></div>`;
+}
 function compEditor(e, d) {
-  const id = esc(e.id);
-  return `<div class="cmp" role="group" aria-label="Ingredients of ${esc(d.item)}"><p class="cmphelp">Untick anything you skipped. Change a multiplier for a light or extra portion of one part.</p>` + d.comps.map((c, i) => {
-    const m = adjMult(e, i, c[0]), on = m > 0, sm = on ? m : 1;
-    const opts = CMULTS.includes(sm) ? CMULTS : CMULTS.concat([sm]).sort((a, b) => a - b);
-    const sel = `<select class="cmq" data-entry="${id}" data-idx="${i}" aria-label="Amount of ${esc(c[0])}"${on ? '' : ' disabled'}>${opts.map(q => `<option value="${q}"${q === sm ? ' selected' : ''}>×${fq(q)}</option>`).join('')}<option value="custom">Custom…</option></select>`;
-    return `<div class="crow${on ? '' : ' off'}${on && m !== 1 ? ' chg' : ''}"><label class="cl"><input type="checkbox" class="cck" data-entry="${id}" data-idx="${i}"${on ? ' checked' : ''}><span>${esc(c[0])}</span></label>${sel}<span class="cg">${fmt(c[1] * sm)} g · ${fmt(c[2] * sm)} kcal · P ${fmt(c[3] * sm)} · F ${fmt(c[4] * sm)} · C ${fmt(c[5] * sm)}${on ? '' : ' · not counted'}</span></div>`;
-  }).join('') + '</div>';
+  const lead = new Map(), member = new Set();
+  for (const [lab, g] of d.grp || []) { lead.set(g[0], [lab || d.comps[g[0]][0], g]); g.forEach(i => member.add(i)); }
+  let html = '';
+  d.comps.forEach((c, i) => {
+    if (lead.has(i)) {
+      const [lab, g] = lead.get(i);
+      html += compRow(e, d, g, lab, 'grp') + g.map(j => compRow(e, d, [j], d.comps[j][0], 'sub')).join('');
+    } else if (!member.has(i)) html += compRow(e, d, [i], c[0], '');
+  });
+  return `<div class="cmp" role="group" aria-label="Ingredients of ${esc(d.item)}"><p class="cmphelp">Untick anything you skipped. Change a multiplier for a light or extra portion. A side's tick and multiplier cover everything listed under it.</p>${html}</div>`;
 }
 function compPicked(sel) {
-  if (sel.value !== 'custom') { setComp(sel.dataset.entry, +sel.dataset.idx, parseFloat(sel.value)); return; }
+  const idxs = idxList(sel);
+  if (sel.value !== 'custom') { if (sel.value !== '') setComp(sel.dataset.entry, idxs, parseFloat(sel.value)); return; }
   const e = dayEntries().find(x => x.id === sel.dataset.entry), d = e && BY_ID[e.itemId]; if (!canAdjust(d)) { renderAll(); return; }
-  const i = +sel.dataset.idx, inp = document.createElement('input');
+  const cur = idxs.map(i => adjMult(e, i, d.comps[i][0])), inp = document.createElement('input');
   inp.type = 'number'; inp.className = 'cqin'; inp.inputMode = 'decimal'; inp.step = 'any'; inp.min = '0'; inp.max = '10';
-  inp.value = fq(adjMult(e, i, d.comps[i][0]) || 1); inp.dataset.entry = e.id; inp.dataset.idx = i;
-  inp.setAttribute('aria-label', 'Custom amount of ' + d.comps[i][0] + ', for example 0.25 or 2.5; 0 removes it');
+  inp.value = fq(cur.every(m => m === cur[0]) && cur[0] > 0 ? cur[0] : 1); inp.dataset.entry = e.id; inp.dataset.idx = idxs.join(',');
+  inp.setAttribute('aria-label', 'Custom amount, for example 0.25 or 2.5; 0 removes it');
   sel.replaceWith(inp); inp.focus(); inp.select();
 }
 function compTyped(inp) {
   if (inp.dataset.done) return; inp.dataset.done = '1';
   const v = parseFloat(String(inp.value).replace(',', '.'));
   if (!(v >= 0) || v > 10) { if (inp.value !== '') showMsg('An ingredient multiplier must be between 0 and 10.', true); renderAll(); return; }
-  setComp(inp.dataset.entry, +inp.dataset.idx, Math.round(v * 100) / 100);
+  setComp(inp.dataset.entry, idxList(inp), Math.round(v * 100) / 100);
 }
 function compChange(t) {
-  if (t.matches('input.cck')) { setComp(t.dataset.entry, +t.dataset.idx, t.checked ? 1 : 0); return true; }
+  if (t.matches('input.cck')) { setComp(t.dataset.entry, idxList(t), t.checked ? 1 : 0); return true; }
   if (t.matches('select.cmq')) { compPicked(t); return true; }
   return false;
 }
