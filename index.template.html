@@ -110,6 +110,23 @@ input[type=search],input[type=text],input[type=number],select{font-size:15px;bac
 .det .meta{display:flex;flex-wrap:wrap;gap:4px 16px;color:var(--muted)}
 .det .meta b{color:var(--ink)}
 .flag{color:var(--heavy);font-weight:600}
+.det td.kc{text-align:right;color:var(--muted);width:76px;font-variant-numeric:tabular-nums}
+/* ingredient editor: untick a part, or change its multiplier */
+.cmp{display:grid;gap:0;max-width:520px}
+.cmphelp{margin:0 0 4px;font-size:12.5px;color:var(--muted)}
+.crow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 8px;align-items:center;padding:5px 0;border-bottom:1px dashed var(--line);font-size:13.5px}
+.crow .cl{display:flex;align-items:center;gap:8px;min-width:0;cursor:pointer;min-height:28px}
+.crow .cl input{width:20px;height:20px;accent-color:var(--accent);margin:0;flex:none}
+.crow select{width:auto;padding:3px 6px;font-size:14px}
+.crow .cg{grid-column:1/-1;padding-left:28px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.crow.off .cl span{text-decoration:line-through;color:var(--muted)}
+.crow.chg .cl span{font-weight:600}
+.cbar{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;font-size:13px}
+.lnk{background:none;border:0;padding:4px 0;color:var(--accent);cursor:pointer;font-weight:600;font-size:13px}
+.lnk:hover{text-decoration:underline}
+.adjl{color:var(--muted)} .adjl b{color:var(--ink);font-weight:600}
+.lrow .cmp{grid-column:1/-1;margin-top:2px}
+.qtywrap .adjl{font-size:12.5px}
 .empty{padding:22px 14px;color:var(--muted);text-align:center}
 @media (max-width:640px){
   .mhead{display:none}
@@ -128,7 +145,7 @@ input[type=search],input[type=text],input[type=number],select{font-size:15px;bac
 .lrow .mac b{color:var(--ink)}
 .lctl{display:flex;align-items:center;gap:6px}
 .lctl select{width:auto;padding:4px 6px;font-size:14px}
-input.qin{width:76px;padding:4px 6px;font-size:16px;border-color:var(--accent)}
+input.qin,input.cqin{width:76px;padding:4px 6px;font-size:16px;border-color:var(--accent)}
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 11px;cursor:pointer;font-size:13.5px}
 .btn:hover{border-color:var(--accent)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
@@ -290,7 +307,7 @@ footer p{margin:0}
 
   <footer>
     <p><b>Estimates</b> [likely, ±25%]: built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted. Starbucks egg bites use Starbucks' published panels; the Mickey bar and Toll House sandwich use grocery-pack labels and may run small. Tap an item's name to see what was assumed.</p>
-    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus for both parks and the Grand Californian Hotel as of October 31, 2026; app version 2026-10-31.7.</p>
+    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus for both parks and the Grand Californian Hotel as of October 31, 2026; app version 2026-11-01.1.</p>
     <p id="installHint">To install on Android: open this page in Chrome, tap the ⋮ menu, then Install app (or Add to Home screen). It works offline after the first visit.</p>
   </footer>
 </div>
@@ -309,7 +326,7 @@ const band = r => r == null ? 'na' : r <= 12 ? 'lean' : r <= 18 ? 'solid' : r <=
 const rid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-const state = { date: todayStr(), park: 'all', land: 'all', qFood: '', qLoc: '', sort: 'ratio', tab: 'menu', open: new Set() };
+const state = { date: todayStr(), park: 'all', land: 'all', qFood: '', qLoc: '', sort: 'ratio', tab: 'menu', open: new Set(), edit: new Set() };
 const ANY_AREA = 'Carts & sides (anywhere)';
 let days = {};            // date -> entries [{id,itemId,name,loc,q,k,p,f,c}]
 let mode = 'connecting';  // connecting | cloud | local
@@ -428,6 +445,68 @@ function setQty(entryId, q) {
   days[state.date] = dayEntries().map(e => e.id === entryId ? { ...e, q, mf: false } : e);
   touch(state.date); renderAll();
 }
+// ---------- ingredient adjustments ----------
+// A logged estimate can have parts removed (multiplier 0) or scaled. The entry keeps its original
+// numbers in `base` and a snapshot of each changed part in `adj` [{i,n,g,m,k,p,f,c}], so the result
+// doesn't move if the menu data changes later. Totals = base + (m - 1) x each changed part.
+const CMULTS = [0.5, 1, 1.5, 2, 3];
+const r10 = x => Math.round(x / 10) * 10;
+const canAdjust = d => !!d && d.src === 'est' && Array.isArray(d.comps) && d.comps.length >= 2 && d.comps[0].length >= 6;
+const shortLab = s => String(s).replace(/\s*\([^)]*\)/g, '').split(' / ')[0].trim().toLowerCase();
+function adjMult(e, i, lab) { const a = (e.adj || []).find(x => x.i === i && x.n === lab); return a ? a.m : 1; }
+function adjText(e) {
+  const a = e.adj || []; if (!a.length) return '';
+  const no = a.filter(x => x.m === 0).map(x => shortLab(x.n));
+  return [no.length ? 'no ' + no.join(', ') : ''].concat(a.filter(x => x.m !== 0).map(x => shortLab(x.n) + ' x' + fq(x.m))).filter(Boolean).join('; ');
+}
+const entryName = e => { const t = adjText(e); return t ? e.name + ' [' + t + ']' : e.name; };
+function withAdj(e, adj) {
+  const base = e.base || { k: e.k, p: e.p, f: e.f, c: e.c };
+  const out = { ...e, mf: false };
+  if (!adj.length) { delete out.adj; delete out.base; return Object.assign(out, base); }
+  let k = base.k, p = base.p, f = base.f, c = base.c;
+  for (const a of adj) { const d = a.m - 1; k += d * a.k; p += d * a.p; f += d * a.f; c += d * a.c; }
+  return Object.assign(out, { adj, base, k: Math.max(0, r10(k)), p: Math.max(0, Math.round(p)), f: Math.max(0, Math.round(f)), c: Math.max(0, Math.round(c)) });
+}
+function setComp(entryId, i, m) {
+  days[state.date] = dayEntries().map(e => {
+    if (e.id !== entryId) return e;
+    const d = BY_ID[e.itemId], part = canAdjust(d) && d.comps[i]; if (!part) return e;
+    const adj = (e.adj || []).filter(x => !(x.i === i && x.n === part[0]));
+    if (m !== 1) adj.push({ i, n: part[0], g: part[1], m, k: part[2], p: part[3], f: part[4], c: part[5] });
+    return withAdj(e, adj.sort((a, b) => a.i - b.i));
+  });
+  touch(state.date); renderAll();
+}
+function compEditor(e, d) {
+  const id = esc(e.id);
+  return `<div class="cmp" role="group" aria-label="Ingredients of ${esc(d.item)}"><p class="cmphelp">Untick anything you skipped. Change a multiplier for a light or extra portion of one part.</p>` + d.comps.map((c, i) => {
+    const m = adjMult(e, i, c[0]), on = m > 0, sm = on ? m : 1;
+    const opts = CMULTS.includes(sm) ? CMULTS : CMULTS.concat([sm]).sort((a, b) => a - b);
+    const sel = `<select class="cmq" data-entry="${id}" data-idx="${i}" aria-label="Amount of ${esc(c[0])}"${on ? '' : ' disabled'}>${opts.map(q => `<option value="${q}"${q === sm ? ' selected' : ''}>×${fq(q)}</option>`).join('')}<option value="custom">Custom…</option></select>`;
+    return `<div class="crow${on ? '' : ' off'}${on && m !== 1 ? ' chg' : ''}"><label class="cl"><input type="checkbox" class="cck" data-entry="${id}" data-idx="${i}"${on ? ' checked' : ''}><span>${esc(c[0])}</span></label>${sel}<span class="cg">${fmt(c[1] * sm)} g · ${fmt(c[2] * sm)} kcal · P ${fmt(c[3] * sm)} · F ${fmt(c[4] * sm)} · C ${fmt(c[5] * sm)}${on ? '' : ' · not counted'}</span></div>`;
+  }).join('') + '</div>';
+}
+function compPicked(sel) {
+  if (sel.value !== 'custom') { setComp(sel.dataset.entry, +sel.dataset.idx, parseFloat(sel.value)); return; }
+  const e = dayEntries().find(x => x.id === sel.dataset.entry), d = e && BY_ID[e.itemId]; if (!canAdjust(d)) { renderAll(); return; }
+  const i = +sel.dataset.idx, inp = document.createElement('input');
+  inp.type = 'number'; inp.className = 'cqin'; inp.inputMode = 'decimal'; inp.step = 'any'; inp.min = '0'; inp.max = '10';
+  inp.value = fq(adjMult(e, i, d.comps[i][0]) || 1); inp.dataset.entry = e.id; inp.dataset.idx = i;
+  inp.setAttribute('aria-label', 'Custom amount of ' + d.comps[i][0] + ', for example 0.25 or 2.5; 0 removes it');
+  sel.replaceWith(inp); inp.focus(); inp.select();
+}
+function compTyped(inp) {
+  if (inp.dataset.done) return; inp.dataset.done = '1';
+  const v = parseFloat(String(inp.value).replace(',', '.'));
+  if (!(v >= 0) || v > 10) { if (inp.value !== '') showMsg('An ingredient multiplier must be between 0 and 10.', true); renderAll(); return; }
+  setComp(inp.dataset.entry, +inp.dataset.idx, Math.round(v * 100) / 100);
+}
+function compChange(t) {
+  if (t.matches('input.cck')) { setComp(t.dataset.entry, +t.dataset.idx, t.checked ? 1 : 0); return true; }
+  if (t.matches('select.cmq')) { compPicked(t); return true; }
+  return false;
+}
 
 // ---------- rendering ----------
 function qtySelect(e, cls) {
@@ -450,7 +529,7 @@ function qtyTyped(inp) {
   setQty(inp.dataset.entry, Math.round(v * 100) / 100);
 }
 function qtyKeys(ev) {
-  const t = ev.target; if (!t.matches('input.qin')) return;
+  const t = ev.target; if (!t.matches('input.qin, input.cqin')) return;
   if (ev.key === 'Enter') { ev.preventDefault(); t.blur(); }
   else if (ev.key === 'Escape') { t.dataset.done = '1'; renderAll(); }
 }
@@ -510,10 +589,12 @@ function sorted(list) {
 function menuRow(d) {
   const e = entryFor(d.id), on = !!e, b = band(d.ratio);
   const tag = d.src === 'pub' ? '<span class="tag pub">Published</span>' : d.src === 'label' ? '<span class="tag">Grocery label</span>' : '';
-  const qty = on ? `<div class="qtywrap">Ate ${qtySelect(e, 'mqty')}</div>` : '';
+  const adj = on && e.adj && e.adj.length ? `<span class="adjl"><b>${esc(adjText(e))}</b>: ${fmt(e.k)} kcal · P ${fmt(e.p)}</span>` : '';
+  const qty = on ? `<div class="qtywrap">Ate ${qtySelect(e, 'mqty')}${adj}</div>` : '';
   let det = '';
   if (state.open.has(d.id)) {
-    const comps = d.comps.length ? '<table>' + d.comps.map(c => `<tr><td>${esc(c[0])}</td><td class="g">${fmt(c[1])} g</td></tr>`).join('') + '</table>' : '';
+    const comps = on && canAdjust(d) ? compEditor(e, d)
+      : d.comps.length ? '<table>' + d.comps.map(c => `<tr><td>${esc(c[0])}</td><td class="g">${fmt(c[1])} g</td>${c.length >= 6 && d.src === 'est' ? `<td class="kc">${fmt(c[2])} kcal</td>` : ''}</tr>`).join('') + '</table>' + (canAdjust(d) ? '<div class="cmphelp">Tick the item to remove or scale any of these parts.</div>' : '') : '';
     const rng = d.src === 'est' ? `${fmt(d.kr[0])} to ${fmt(d.kr[1])} kcal` : 'label value';
     det = `<div class="det" id="det-${esc(d.id)}"><div class="meta"><span>Range <b>${rng}</b></span><span>Protein <b>${d.src === 'est' ? d.pr[0] + ' to ' + d.pr[1] : d.p} g</b></span>${d.ei ? `<span>Enchanted Insider <b>${fmt(d.ei)} kcal</b></span>` : ''}${d.verify ? '<span class="flag">verify menu</span>' : ''}</div>${comps}${d.note ? `<div>${esc(d.note)}</div>` : ''}</div>`;
   }
@@ -537,10 +618,12 @@ function renderLog() {
   const el = document.getElementById('logRows');
   if (!list.length) { el.innerHTML = '<div class="empty">Nothing logged for this day yet. Check items in the menu, or add something not listed.</div>'; return; }
   el.innerHTML = list.map(e => {
-    const q = +e.q || 0;
+    const q = +e.q || 0, d = e.itemId && BY_ID[e.itemId], ok = canAdjust(d), open = ok && state.edit.has(e.id);
+    const t = adjText(e);
+    const bar = ok || t ? `<div class="cbar">${ok ? `<button type="button" class="lnk" data-cmp="${esc(e.id)}" aria-expanded="${open}">${open ? 'Done adjusting' : 'Adjust ingredients'}</button>` : ''}${t ? `<span class="adjl">Adjusted: <b>${esc(t)}</b></span>` : ''}</div>` : '';
     return `<div class="lrow"><div class="nm2">${esc(e.name)}<div class="lc">${esc(e.loc)}</div></div>
       <div class="lctl">${qtySelect(e, 'lqty')}<button type="button" class="btn x" data-del="${esc(e.id)}" aria-label="Remove ${esc(e.name)}">Remove</button></div>
-      <div class="mac"><span><b>${fmt(e.k * q)}</b> kcal</span><span>P <b>${fmt(e.p * q)}</b></span><span>F <b>${fmt(e.f * q)}</b></span><span>C <b>${fmt(e.c * q)}</b></span></div></div>`;
+      <div class="mac"><span><b>${fmt(e.k * q)}</b> kcal</span><span>P <b>${fmt(e.p * q)}</b></span><span>F <b>${fmt(e.f * q)}</b></span><span>C <b>${fmt(e.c * q)}</b></span></div>${bar}${open ? compEditor(e, d) : ''}</div>`;
   }).join('');
 }
 function renderHistory() {
@@ -558,7 +641,10 @@ function renderHistory() {
 // recent: one row per distinct item, newest first
 const RECENT_MAX = 40;
 let recentIndex = new Map();
-function recentKey(e) { return e.itemId ? 'i:' + e.itemId : 'c:' + String(e.name).toLowerCase() + '|' + e.k + '|' + e.p + '|' + e.f + '|' + e.c; }
+function recentKey(e) {
+  const a = e.adj && e.adj.length ? '|a:' + e.adj.map(x => x.i + '=' + x.m).join(',') : '';
+  return e.itemId ? 'i:' + e.itemId + a : 'c:' + String(e.name).toLowerCase() + '|' + e.k + '|' + e.p + '|' + e.f + '|' + e.c;
+}
 function recentList() {
   // Order by the last time an item was logged on some OTHER day than the one showing, so ticking
   // an item here doesn't make the rows jump under your finger. Items logged only on this day sort by it.
@@ -574,8 +660,9 @@ function recentList() {
   return [...map.values()].sort((a, b) => b.sd.localeCompare(a.sd) || b.so - a.so).slice(0, RECENT_MAX);
 }
 function recentVals(r) {
-  const d = r.e.itemId && BY_ID[r.e.itemId];
-  return d ? { name: d.item, loc: where(d), k: d.k, p: d.p, f: d.f, c: d.c } : { name: r.e.name, loc: r.e.loc || '', k: r.e.k, p: r.e.p, f: r.e.f, c: r.e.c };
+  const d = r.e.itemId && BY_ID[r.e.itemId], adj = r.e.adj && r.e.adj.length;
+  if (d && adj) return { name: entryName(r.e), loc: where(d), k: r.e.k, p: r.e.p, f: r.e.f, c: r.e.c };
+  return d ? { name: d.item, loc: where(d), k: d.k, p: d.p, f: d.f, c: d.c } : { name: entryName(r.e), loc: r.e.loc || '', k: r.e.k, p: r.e.p, f: r.e.f, c: r.e.c };
 }
 function shortDay(d) {
   if (d === todayStr()) return 'today';
@@ -598,9 +685,11 @@ function renderRecent() {
 function toggleRecent(key, add) {
   const r = recentIndex.get(key); if (!r) return;
   if (!add) { days[state.date] = dayEntries().filter(e => recentKey(e) !== key); touch(state.date); renderAll(); return; }
-  if (r.e.itemId && BY_ID[r.e.itemId]) { addItem(r.e.itemId); return; }
-  const e = r.e, list = dayEntries().slice();
-  list.push({ id: rid(), itemId: e.itemId || null, name: e.name, loc: e.loc || '', q: 1, k: +e.k || 0, p: +e.p || 0, f: +e.f || 0, c: +e.c || 0 });
+  const e = r.e, adj = e.adj && e.adj.length;
+  if (e.itemId && BY_ID[e.itemId] && !adj) { addItem(e.itemId); return; }
+  const list = dayEntries().slice(), x = { id: rid(), itemId: e.itemId || null, name: e.name, loc: e.loc || '', q: 1, k: +e.k || 0, p: +e.p || 0, f: +e.f || 0, c: +e.c || 0 };
+  if (adj && e.base) { x.adj = e.adj.map(a => ({ ...a })); x.base = { ...e.base }; }
+  list.push(x);
   days[state.date] = list; touch(state.date); renderAll();
 }
 function renderTabs() {
@@ -613,7 +702,7 @@ function renderMF() {
   const done = list.filter(e => e.mf).length;
   const btn = (lab, val) => `<button type="button" class="mfv" data-copy="${esc(val)}" aria-label="Copy ${lab} ${esc(val)}"><span>${lab}</span><b>${esc(val)}</b></button>`;
   el.innerHTML = `<div class="mfhead">${done} of ${list.length} entered in MacroFactor</div>` + list.map(e => {
-    const q = +e.q || 0, name = e.name + (q !== 1 ? ' x' + fq(q) : '');
+    const q = +e.q || 0, name = entryName(e) + (q !== 1 ? ' x' + fq(q) : '');
     return `<div class="mfrow${e.mf ? ' done' : ''}"><div class="mfn"><button type="button" class="mfname" data-copy="${esc(name)}" aria-label="Copy name">${esc(name)}</button>
       <label class="mfck"><input type="checkbox" class="mfdone" data-entry="${esc(e.id)}" ${e.mf ? 'checked' : ''}> Entered</label></div>
       <div class="mfvals">${btn('Calories', Math.round(e.k * q))}${btn('Protein', Math.round(e.p * q))}${btn('Fat', Math.round(e.f * q))}${btn('Carbs', Math.round(e.c * q))}</div></div>`;
@@ -645,10 +734,11 @@ document.getElementById('menuRows').addEventListener('change', ev => {
   const t = ev.target;
   if (t.matches('input.ck')) { t.checked ? addItem(t.dataset.item) : removeItem(t.dataset.item); }
   else if (t.matches('select.mqty')) qtyPicked(t);
+  else compChange(t);
 });
 for (const id of ['menuRows', 'logRows']) {
   const el = document.getElementById(id);
-  el.addEventListener('focusout', ev => { if (ev.target.matches('input.qin')) qtyTyped(ev.target); });
+  el.addEventListener('focusout', ev => { if (ev.target.matches('input.qin')) qtyTyped(ev.target); else if (ev.target.matches('input.cqin')) compTyped(ev.target); });
   el.addEventListener('keydown', qtyKeys);
 }
 document.getElementById('menuRows').addEventListener('click', ev => {
@@ -656,10 +746,12 @@ document.getElementById('menuRows').addEventListener('click', ev => {
   const id = b.dataset.open; state.open.has(id) ? state.open.delete(id) : state.open.add(id); renderMenu();
 });
 document.getElementById('logRows').addEventListener('change', ev => {
-  const t = ev.target; if (t.matches('select.lqty')) qtyPicked(t);
+  const t = ev.target; if (t.matches('select.lqty')) qtyPicked(t); else compChange(t);
 });
 document.getElementById('logRows').addEventListener('click', ev => {
-  const b = ev.target.closest('[data-del]'); if (b) removeEntry(b.dataset.del);
+  const b = ev.target.closest('[data-del]'); if (b) { removeEntry(b.dataset.del); return; }
+  const c = ev.target.closest('[data-cmp]'); if (!c) return;
+  const id = c.dataset.cmp; state.edit.has(id) ? state.edit.delete(id) : state.edit.add(id); renderLog();
 });
 document.getElementById('recentRows').addEventListener('change', ev => {
   const t = ev.target; if (t.matches('input.rck')) toggleRecent(t.dataset.rkey, t.checked);
@@ -698,7 +790,7 @@ form.addEventListener('submit', ev => {
 document.getElementById('copyLog').addEventListener('click', () => {
   const list = dayEntries();
   if (!list.length) { showMsg('Nothing to copy for this day.'); return; }
-  const lines = list.map(e => { const q = +e.q || 0; return `${state.date} | ${e.name} (${e.loc}) x${fq(q)} | ${fmt(e.k * q)} kcal | P ${fmt(e.p * q)} | F ${fmt(e.f * q)} | C ${fmt(e.c * q)}`; });
+  const lines = list.map(e => { const q = +e.q || 0; return `${state.date} | ${entryName(e)} (${e.loc}) x${fq(q)} | ${fmt(e.k * q)} kcal | P ${fmt(e.p * q)} | F ${fmt(e.f * q)} | C ${fmt(e.c * q)}`; });
   const t = totals(list);
   lines.push(`${state.date} | Day total, ${t.n} items | ${fmt(t.k)} kcal | P ${fmt(t.p)} | F ${fmt(t.f)} | C ${fmt(t.c)} | Disneyland tracker estimates`);
   const text = lines.join('\n');
@@ -745,7 +837,13 @@ document.getElementById('restoreFile').addEventListener('change', async ev => {
     for (const [d, list] of Object.entries(data.days)) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !Array.isArray(list)) continue;
       const cur = days[d] ? days[d].slice() : []; const ids = new Set(cur.map(e => e.id));
-      for (const e of list) { if (e && e.id && !ids.has(e.id) && typeof e.name === 'string') { cur.push({ id: e.id, itemId: e.itemId || null, name: e.name, loc: e.loc || '', q: +e.q || 1, k: +e.k || 0, p: +e.p || 0, f: +e.f || 0, c: +e.c || 0, mf: !!e.mf }); ids.add(e.id); added++; } }
+      for (const e of list) {
+        if (!(e && e.id && !ids.has(e.id) && typeof e.name === 'string')) continue;
+        const x = { id: e.id, itemId: e.itemId || null, name: e.name, loc: e.loc || '', q: +e.q || 1, k: +e.k || 0, p: +e.p || 0, f: +e.f || 0, c: +e.c || 0, mf: !!e.mf };
+        const adj = Array.isArray(e.adj) ? e.adj.filter(a => a && Number.isInteger(a.i) && typeof a.n === 'string' && +a.m >= 0).map(a => ({ i: a.i, n: a.n, g: +a.g || 0, m: +a.m, k: +a.k || 0, p: +a.p || 0, f: +a.f || 0, c: +a.c || 0 })) : [];
+        if (adj.length && e.base && typeof e.base === 'object') { x.adj = adj; x.base = { k: +e.base.k || 0, p: +e.base.p || 0, f: +e.base.f || 0, c: +e.base.c || 0 }; }
+        cur.push(x); ids.add(e.id); added++;
+      }
       if (cur.length) days[d] = cur;
     }
     saveCache(); renderAll(); backupMsg('Restored ' + added + ' item' + (added === 1 ? '' : 's') + ' from the backup.');
