@@ -328,7 +328,7 @@ footer p{margin:0}
 
   <footer>
     <p><b>Estimates</b> [likely, ±25%]: built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted. Starbucks egg bites use Starbucks' published panels; the Mickey bar and Toll House sandwich use grocery-pack labels and may run small. Tap an item's name to see what was assumed.</p>
-    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus for both parks and the Grand Californian Hotel as of November 2, 2026; app version 2026-11-02.2.</p>
+    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus for both parks and the Grand Californian Hotel as of November 2, 2026; app version 2026-11-02.3.</p>
     <p id="installHint">To install on Android: open this page in Chrome, tap the ⋮ menu, then Install app (or Add to Home screen). It works offline after the first visit.</p>
   </footer>
 </div>
@@ -484,16 +484,20 @@ function units(d) {
 }
 const canAdjust = d => !!d && d.src === 'est' && Array.isArray(d.comps) && d.comps.length >= 2 && d.comps[0].length >= 6 && units(d) >= 2;
 const shortLab = s => String(s).replace(/\s*\([^)]*\)/g, '').split(' / ')[0].trim().toLowerCase();
-function adjMult(e, i, lab) { const a = (e.adj || []).find(x => x.i === i && x.n === lab); return a ? a.m : 1; }
+// A saved change finds its part by position and ingredient key (comps[6]), so a renamed label still matches.
+// Changes saved before keys existed carry only the label; these are the labels renamed on 2026-11-02.
+const OLD_LABEL_KEY = { 'Fries / cottage fries (fat incl.)': 'fries', 'Sourdough bread': 'bread_sourdough', 'Hash brown potatoes': 'hashbrown' };
+const sameFood = (x, part) => x.key ? x.key === part[6] : (x.n === part[0] || (!!part[6] && OLD_LABEL_KEY[x.n] === part[6]));
+function adjMult(e, i, part) { const a = (e.adj || []).find(x => x.i === i && sameFood(x, part)); return a ? a.m : 1; }
 function adjText(e) {
   const a = e.adj || []; if (!a.length) return '';
   // a side changed as a whole reads as the side ("no parmesan cottage fries"), not its pieces
   const d = e.itemId && BY_ID[e.itemId], parts = [], used = new Set();
   for (const [lab, g] of (d && d.grp) || []) {
-    const ms = g.map(i => adjMult(e, i, d.comps[i][0]));
+    const ms = g.map(i => adjMult(e, i, d.comps[i]));
     if (ms[0] !== 1 && ms.every(m => m === ms[0])) { parts.push({ n: lab || d.comps[g[0]][0], m: ms[0] }); g.forEach(i => used.add(i)); }
   }
-  for (const x of a) if (!used.has(x.i)) parts.push({ n: x.n, m: x.m });
+  for (const x of a) if (!used.has(x.i)) parts.push({ n: d && d.comps[x.i] && sameFood(x, d.comps[x.i]) ? d.comps[x.i][0] : x.n, m: x.m });
   const no = parts.filter(x => x.m === 0).map(x => shortLab(x.n));
   return [no.length ? 'no ' + no.join(', ') : ''].concat(parts.filter(x => x.m !== 0).map(x => shortLab(x.n) + ' x' + fq(x.m))).filter(Boolean).join('; ');
 }
@@ -514,8 +518,8 @@ function setComp(entryId, idxs, m) {
     let adj = e.adj || [];
     for (const i of idxs) {
       const part = d.comps[i];
-      adj = adj.filter(x => !(x.i === i && x.n === part[0]));
-      if (m !== 1) adj.push({ i, n: part[0], g: part[1], m, k: part[2], p: part[3], f: part[4], c: part[5] });
+      adj = adj.filter(x => !(x.i === i && sameFood(x, part)));
+      if (m !== 1) adj.push({ i, n: part[0], key: part[6], g: part[1], m, k: part[2], p: part[3], f: part[4], c: part[5] });
     }
     return withAdj(e, adj.sort((a, b) => a.i - b.i));
   });
@@ -523,7 +527,7 @@ function setComp(entryId, idxs, m) {
 }
 const idxList = el => String(el.dataset.idx).split(',').map(Number);
 function compRow(e, d, idxs, label, cls) {
-  const id = esc(e.id), ms = idxs.map(i => adjMult(e, i, d.comps[i][0]));
+  const id = esc(e.id), ms = idxs.map(i => adjMult(e, i, d.comps[i]));
   const on = ms.some(m => m > 0), same = ms.every(m => m === ms[0]), m = same ? ms[0] : null, sm = on && same ? m : 1;
   const opts = m == null || !on || CMULTS.includes(sm) ? CMULTS : CMULTS.concat([sm]).sort((a, b) => a - b);
   const mixed = on && !same ? '<option value="" selected disabled>mixed</option>' : '';
@@ -535,7 +539,7 @@ function compRow(e, d, idxs, label, cls) {
 }
 // a part that can't be left off: shown for transparency, counted at its current amount (a side's multiplier still scales it)
 function fixedRow(e, d, i, cls) {
-  const c = d.comps[i], m = adjMult(e, i, c[0]);
+  const c = d.comps[i], m = adjMult(e, i, c);
   return `<div class="crow fixed ${cls}"><span class="cl"><span class="fxbox" aria-hidden="true"></span><span>${esc(c[0])}</span></span><span class="fxtag">${m === 1 ? 'included' : m === 0 ? 'removed with side' : '×' + fq(m) + ' with side'}</span><span class="cg">${fmt(c[1] * m)} g · ${fmt(c[2] * m)} kcal · P ${fmt(c[3] * m)} · F ${fmt(c[4] * m)} · C ${fmt(c[5] * m)}</span></div>`;
 }
 function compEditor(e, d) {
@@ -557,7 +561,7 @@ function compPicked(sel) {
   const idxs = idxList(sel);
   if (sel.value !== 'custom') { if (sel.value !== '') setComp(sel.dataset.entry, idxs, parseFloat(sel.value)); return; }
   const e = dayEntries().find(x => x.id === sel.dataset.entry), d = e && BY_ID[e.itemId]; if (!canAdjust(d)) { renderAll(); return; }
-  const cur = idxs.map(i => adjMult(e, i, d.comps[i][0])), inp = document.createElement('input');
+  const cur = idxs.map(i => adjMult(e, i, d.comps[i])), inp = document.createElement('input');
   inp.type = 'number'; inp.className = 'cqin'; inp.inputMode = 'decimal'; inp.step = 'any'; inp.min = '0'; inp.max = '10';
   inp.value = fq(cur.every(m => m === cur[0]) && cur[0] > 0 ? cur[0] : 1); inp.dataset.entry = e.id; inp.dataset.idx = idxs.join(',');
   inp.setAttribute('aria-label', 'Custom amount, for example 0.25 or 2.5; 0 removes it');
@@ -983,7 +987,7 @@ document.getElementById('restoreFile').addEventListener('change', async ev => {
       for (const e of list) {
         if (!(e && e.id && !ids.has(e.id) && typeof e.name === 'string')) continue;
         const x = { id: e.id, itemId: e.itemId || null, name: e.name, loc: e.loc || '', q: +e.q || 1, k: +e.k || 0, p: +e.p || 0, f: +e.f || 0, c: +e.c || 0, mf: !!e.mf };
-        const adj = Array.isArray(e.adj) ? e.adj.filter(a => a && Number.isInteger(a.i) && typeof a.n === 'string' && +a.m >= 0).map(a => ({ i: a.i, n: a.n, g: +a.g || 0, m: +a.m, k: +a.k || 0, p: +a.p || 0, f: +a.f || 0, c: +a.c || 0 })) : [];
+        const adj = Array.isArray(e.adj) ? e.adj.filter(a => a && Number.isInteger(a.i) && typeof a.n === 'string' && +a.m >= 0).map(a => ({ i: a.i, n: a.n, ...(typeof a.key === 'string' ? { key: a.key } : {}), g: +a.g || 0, m: +a.m, k: +a.k || 0, p: +a.p || 0, f: +a.f || 0, c: +a.c || 0 })) : [];
         if (adj.length && e.base && typeof e.base === 'object') { x.adj = adj; x.base = { k: +e.base.k || 0, p: +e.base.p || 0, f: +e.base.f || 0, c: +e.base.c || 0 }; }
         cur.push(x); ids.add(e.id); added++;
       }
