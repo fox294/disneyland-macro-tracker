@@ -93,6 +93,8 @@ input[type=search],input[type=text],input[type=number],select{font-size:15px;bac
 .sugg li.none:hover{background:none}
 .sugg .cnt{position:sticky;top:-4px;margin-top:-4px;padding:5px 12px;min-height:0;font-size:12px;color:var(--muted);background:var(--bg);border-bottom:1px solid var(--line);cursor:default}
 .sugg .cnt:hover{background:var(--bg)}
+.sugg .cnt.other{position:static;margin-top:0;color:var(--heavy);font-weight:600}
+.sugg li.out span{color:var(--muted)}
 .count{font-size:13px;color:var(--muted);margin:0 0 8px}
 @media (max-width:760px){.filters{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.filters .fl.area{grid-column:1/-1}}
 @media (max-width:520px){.filters{grid-template-columns:1fr}}
@@ -328,7 +330,7 @@ footer p{margin:0}
 
   <footer>
     <p><b>Estimates</b> [likely, ±25%]: built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted. Starbucks egg bites use Starbucks' published panels; the Mickey bar and Toll House sandwich use grocery-pack labels and may run small. Tap an item's name to see what was assumed.</p>
-    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus for both parks and the Grand Californian Hotel as of November 2, 2026; app version 2026-11-02.3.</p>
+    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus for both parks and the Grand Californian Hotel as of November 2, 2026; app version 2026-11-02.4.</p>
     <p id="installHint">To install on Android: open this page in Chrome, tap the ⋮ menu, then Install app (or Add to Home screen). It works offline after the first visit.</p>
   </footer>
 </div>
@@ -680,7 +682,10 @@ function menuRow(d) {
 }
 function renderMenu() {
   const list = sorted(ITEMS.filter(matches));
-  document.getElementById('menuRows').innerHTML = list.length ? list.map(menuRow).join('') : '<div class="empty">No items match. Clear a filter, or pick another park or area.</div>';
+  const wider = list.length || !filtered() ? 0 : ITEMS.filter(d => foodOk(d, state.qFood) && locOk(d, state.qLoc)).length;
+  document.getElementById('menuRows').innerHTML = list.length ? list.map(menuRow).join('')
+    : wider ? `<div class="empty">Nothing here in your park or area filter, but ${wider} item${wider === 1 ? '' : 's'} match elsewhere.<br><button type="button" class="btn primary" id="widenBtn" style="margin-top:10px">Show all parks and areas</button></div>`
+    : '<div class="empty">No items match. Clear a filter, or pick another park or area.</div>';
   document.getElementById('count').textContent = list.length + ' of ' + ITEMS.length + ' items';
   document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.park === state.park)));
   document.getElementById('sortSel').value = state.sort;
@@ -815,6 +820,7 @@ for (const id of ['menuRows', 'logRows']) {
   el.addEventListener('keydown', qtyKeys);
 }
 document.getElementById('menuRows').addEventListener('click', ev => {
+  if (ev.target.closest('#widenBtn')) { widenFilters(); renderMenu(); return; }
   const b = ev.target.closest('[data-open]'); if (!b) return;
   const id = b.dataset.open; state.open.has(id) ? state.open.delete(id) : state.open.add(id); renderMenu();
 });
@@ -849,24 +855,35 @@ function rankBy(name, words) {
   const f = fold(name); if (f.startsWith(words[0])) return 0;
   return f.split(/[^a-z0-9']+/).some(t => t.startsWith(words[0])) ? 1 : 2;
 }
+// Matches outside the Park / Area filter are listed after a divider instead of hidden: a forgotten filter
+// otherwise makes a restaurant look missing. Picking one of those widens the filter to all parks and areas.
+const filtered = () => state.park !== 'all' || state.land !== 'all';
+const parkName = d => d.park === 'Either park' ? 'Both parks' : d.park === 'Grand Californian Hotel' ? 'Grand Californian' : d.park;
 function foodOptions(q) {
   const words = qWords(q), by = new Map();
   for (const d of ITEMS) {
-    if (!placeOk(d) || !locOk(d, state.qLoc) || !hasAll(d.item, words)) continue;
-    const o = by.get(d.item) || { v: d.item, locs: new Set() }; o.locs.add(d.loc); by.set(d.item, o);
+    if (!locOk(d, state.qLoc) || !hasAll(d.item, words)) continue;
+    const other = !placeOk(d), key = (other ? '1' : '0') + d.item;
+    if (!other && by.has('1' + d.item)) by.delete('1' + d.item);
+    if (other && by.has('0' + d.item)) continue;
+    const o = by.get(key) || { v: d.item, other, locs: new Set(), parks: new Set() }; o.locs.add(d.loc); o.parks.add(parkName(d)); by.set(key, o);
   }
-  return [...by.values()].sort((a, b) => rankBy(a.v, words) - rankBy(b.v, words) || a.v.localeCompare(b.v))
-    .map(o => ({ v: o.v, html: hlWords(o.v, words), sub: o.locs.size === 1 ? esc([...o.locs][0]) : o.locs.size + ' restaurants' }));
+  return [...by.values()].sort((a, b) => a.other - b.other || rankBy(a.v, words) - rankBy(b.v, words) || a.v.localeCompare(b.v))
+    .map(o => ({ v: o.v, other: o.other, html: hlWords(o.v, words), sub: (o.locs.size === 1 ? esc([...o.locs][0]) : o.locs.size + ' restaurants') + (o.other ? ' · ' + esc([...o.parks].join(', ')) : '') }));
 }
 function locOptions(q) {
   const words = qWords(q), by = new Map();
   for (const d of ITEMS) {
-    if (!placeOk(d) || !foodOk(d, state.qFood) || !locOk(d, q)) continue;
-    const o = by.get(d.loc) || { v: d.loc, area: d.land && d.land !== ANY_AREA ? d.land : (d.park === 'Either park' ? 'Both parks' : d.park), n: 0 }; o.n++; by.set(d.loc, o);
+    if (!foodOk(d, state.qFood) || !locOk(d, q)) continue;
+    const other = !placeOk(d), key = (other ? '1' : '0') + d.loc;
+    if (!other && by.has('1' + d.loc)) by.delete('1' + d.loc);
+    if (other && by.has('0' + d.loc)) continue;
+    const o = by.get(key) || { v: d.loc, other, area: d.land && d.land !== ANY_AREA ? d.land : parkName(d), park: parkName(d), n: 0 }; o.n++; by.set(key, o);
   }
-  return [...by.values()].sort((a, b) => rankBy(a.v, words) - rankBy(b.v, words) || a.v.localeCompare(b.v))
-    .map(o => ({ v: o.v, html: hlWords(o.v, words), sub: hlWords(o.area, words) + ' · ' + o.n + ' item' + (o.n === 1 ? '' : 's') }));
+  return [...by.values()].sort((a, b) => a.other - b.other || rankBy(a.v, words) - rankBy(b.v, words) || a.v.localeCompare(b.v))
+    .map(o => ({ v: o.v, other: o.other, html: hlWords(o.v, words), sub: hlWords(o.area, words) + (o.other && !fold(o.area).includes(fold(o.park)) ? ' · ' + esc(o.park) : '') + ' · ' + o.n + ' item' + (o.n === 1 ? '' : 's') }));
 }
+function widenFilters() { state.park = 'all'; state.land = 'all'; landOptions(); saveCache(); }
 function combo(inputId, listId, options, apply, noun) {
   const inp = document.getElementById(inputId), list = document.getElementById(listId);
   let opts = [], act = -1, timer = null;
@@ -882,13 +899,15 @@ function combo(inputId, listId, options, apply, noun) {
   };
   const show = () => {
     opts = options(inp.value); act = -1; inp.removeAttribute('aria-activedescendant');
-    const head = `<li class="cnt" role="presentation">${opts.length} ${noun}${opts.length === 1 ? '' : 's'}${inp.value.trim() ? ' match' + (opts.length === 1 ? 'es' : '') : ''}</li>`;
-    list.innerHTML = head + (opts.length ? opts.map((o, i) => `<li role="option" id="${listId}-${i}" data-i="${i}" aria-selected="false"><span>${o.html}</span><small>${o.sub}</small></li>`).join('')
-      : `<li class="none" role="presentation">Nothing matches. Check the spelling, or clear a park or area filter.</li>`);
+    const nIn = opts.filter(o => !o.other).length, nOut = opts.length - nIn;
+    const head = `<li class="cnt" role="presentation">${nIn} ${noun}${nIn === 1 ? '' : 's'}${inp.value.trim() ? ' match' + (nIn === 1 ? 'es' : '') : ''}${filtered() ? ' in your park and area filter' : ''}</li>`;
+    const divider = `<li class="cnt other" role="presentation">${nOut} more outside your park or area filter · picking one shows all parks</li>`;
+    list.innerHTML = head + (opts.length ? opts.map((o, i) => (o.other && (i === 0 || !opts[i - 1].other) ? divider : '') + `<li role="option" id="${listId}-${i}" data-i="${i}" aria-selected="false"${o.other ? ' class="out"' : ''}><span>${o.html}</span><small>${o.sub}</small></li>`).join('')
+      : `<li class="none" role="presentation">Nothing matches. Check the spelling.</li>`);
     list.hidden = false; inp.setAttribute('aria-expanded', 'true'); list.scrollTop = 0; fit();
   };
   const hide = () => { list.hidden = true; inp.setAttribute('aria-expanded', 'false'); inp.removeAttribute('aria-activedescendant'); act = -1; };
-  const pick = i => { const o = opts[i]; if (!o) return; inp.value = o.v; apply(o.v); hide(); inp.blur(); };
+  const pick = i => { const o = opts[i]; if (!o) return; if (o.other) widenFilters(); inp.value = o.v; apply(o.v); hide(); inp.blur(); };
   inp.addEventListener('focus', () => {
     if (innerWidth < 960) {  // bring the box up under the sticky day bar so the list has room above the keyboard
       const bar = document.querySelector('.daybar'), y = inp.getBoundingClientRect().top + scrollY - (bar ? bar.offsetHeight : 0) - 34;
