@@ -76,7 +76,7 @@ input[type=search],input[type=text],input[type=number],select{font-size:15px;bac
 .seg button{border:0;background:transparent;padding:6px 11px;cursor:pointer;font-size:13.5px}
 .seg button+button{border-left:1px solid var(--line)}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);font-weight:600}
-@media (max-width:640px){.seg{display:grid;grid-template-columns:1fr 1fr;width:100%}.seg button{border-left:0!important;border-top:1px solid var(--line)}.seg button:nth-child(-n+2){border-top:0}.seg button:nth-child(even){border-left:1px solid var(--line)!important}}
+@media (max-width:640px){.seg{display:grid;grid-template-columns:1fr 1fr;width:100%}.seg button{border-left:0!important;border-top:1px solid var(--line)}.seg button:first-child{grid-column:1/-1;border-top:0}.seg button:nth-child(odd):not(:first-child){border-left:1px solid var(--line)!important}}
 .filters select{width:auto}
 .filters .fl select{width:100%}
 /* type-ahead lists under Food and Restaurant */
@@ -228,7 +228,7 @@ footer p{margin:0}
 
 <div class="wrap">
   <header class="top">
-    <div><div class="eyebrow">Disneyland Resort · parks and Grand Californian · daily log</div><h1>Disneyland Macro Tracker</h1></div>
+    <div><div class="eyebrow">Disneyland Resort · parks, Grand Californian and Downtown Disney · daily log</div><h1>Disneyland Macro Tracker</h1></div>
     <button type="button" class="btn primary" id="installBtn" hidden>Install app</button>
     <div class="status" id="status" data-s="connecting" aria-live="polite"><span class="dot"></span><span id="statusText">Loading…</span></div>
   </header>
@@ -271,6 +271,7 @@ footer p{margin:0}
             <button type="button" id="pk-dl" data-park="Disneyland">Disneyland</button>
             <button type="button" id="pk-ca" data-park="California Adventure">California Adventure</button>
             <button type="button" id="pk-gch" data-park="Grand Californian Hotel">Grand Californian</button>
+            <button type="button" id="pk-dd" data-park="Downtown Disney">Downtown Disney</button>
           </div>
           <select id="sortSel" aria-label="Sort">
             <option value="ratio">Sort: kcal per g protein</option>
@@ -329,8 +330,8 @@ footer p{margin:0}
   </div>
 
   <footer>
-    <p><b>Estimates</b> [likely, ±25%]: built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted. Starbucks egg bites use Starbucks' published panels; the Mickey bar and Toll House sandwich use grocery-pack labels and may run small. Tap an item's name to see what was assumed.</p>
-    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus for both parks and the Grand Californian Hotel as of November 2, 2026; app version 2026-11-02.4.</p>
+    <p><b>Estimates</b> [likely, ±25%]: built from USDA FoodData Central records and assumed portions, with frying oil and cooking fat counted. Items tagged Published use the operator's own numbers (Starbucks, Wetzel's Pretzels, Earl of Sandwich); the Mickey bar and Toll House sandwich use grocery-pack labels and may run small. Tap an item's name to see what was assumed.</p>
+    <p>Each logged item keeps the numbers it had when you checked it, so later corrections to the menu don't change past days. Your log lives only on this phone, in this app; nothing is sent anywhere. Use Back up in History to save a copy to your Downloads. Menus match Disney's official online menus for both parks, the Grand Californian Hotel and Downtown Disney as of November 3, 2026; app version 2026-11-03.1.</p>
     <p id="installHint">To install on Android: open this page in Chrome, tap the ⋮ menu, then Install app (or Add to Home screen). It works offline after the first visit.</p>
   </footer>
 </div>
@@ -628,12 +629,12 @@ function where(d) {
 function landOptions() {
   const sel = document.getElementById('landSel');
   let html = '<option value="all">All areas</option>';
-  for (const [pk, label] of [['Disneyland', 'Disneyland Park'], ['California Adventure', 'California Adventure'], ['Grand Californian Hotel', 'Hotel']]) {
+  for (const [pk, label] of [['Disneyland', 'Disneyland Park'], ['California Adventure', 'California Adventure'], ['Grand Californian Hotel', 'Hotel'], ['Downtown Disney', 'Downtown Disney']]) {
     if (state.park !== 'all' && state.park !== pk) continue;
     const lands = [...new Set(ITEMS.filter(d => d.park === pk && d.land && d.land !== ANY_AREA).map(d => d.land))].sort((a, b) => a.replace(/^Star Wars: /, '').localeCompare(b.replace(/^Star Wars: /, '')));
     html += `<optgroup label="${esc(label)}">` + lands.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('') + '</optgroup>';
   }
-  if (state.park !== 'Grand Californian Hotel') html += `<option value="${esc(ANY_AREA)}">${esc(ANY_AREA)}</option>`;
+  if (state.park !== 'Grand Californian Hotel' && state.park !== 'Downtown Disney') html += `<option value="${esc(ANY_AREA)}">${esc(ANY_AREA)}</option>`;
   sel.innerHTML = html;
   if (![...sel.options].some(o => o.value === state.land)) state.land = 'all';
   sel.value = state.land;
@@ -643,7 +644,7 @@ const qWords = q => fold(q).split(/[\s,]+/).filter(Boolean);
 const hasAll = (hay, words) => { const h = fold(hay); return words.every(w => h.includes(w)); };
 function placeOk(d) {
   const inBothParks = d.park === 'Either park' || /both parks/i.test(d.loc);
-  if (state.park !== 'all' && d.park !== state.park && !(inBothParks && state.park !== 'Grand Californian Hotel')) return false;
+  if (state.park !== 'all' && d.park !== state.park && !(inBothParks && state.park !== 'Grand Californian Hotel' && state.park !== 'Downtown Disney')) return false;
   return state.land === 'all' || d.land === state.land;
 }
 const foodOk = (d, q) => hasAll(d.item, qWords(q));
